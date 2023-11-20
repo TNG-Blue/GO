@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="vn">
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Web Server Lora</title>
+    <style>
+        /* CSS cho trang web */
+        body {
+            /* Hiển thị nội dung trung tâm trên trang */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh; /* Chiều cao của trang là 100% của viewport height */
+            margin: 0;
+        }
+
+        .container-wrapper {
+            /* Hiển thị hai phần bên cạnh nhau và căn chỉnh giữa chúng */
+            display: flex;
+            justify-content: center;
+            max-width: 800px;
+            width: 100%;
+            padding: 20px;
+        }
+
+        .container {
+            /* Giao diện container cho phần hiển thị thông tin cảm biến và điều khiển */
+            flex: 1; /* Mở rộng container để lấp đầy không gian */
+            padding: 20px;
+            border: 1px solid #ccc; /* Khung viền với màu xám (#ccc) */
+            border-radius: 5px; /* Góc bo tròn */
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2); /* Hiệu ứng bóng đổ */
+            margin: 10px; /* Khoảng cách giữa các container */
+        }
+
+        .download-button {
+            /* Giao diện cho nút tải xuống tệp Excel */
+            display: block;
+            margin-top: 20px; /* Khoảng cách từ nút xuống phần dưới */
+            padding: 10px 20px;
+            background-color: #007bff; /* Màu nền (#007bff) */
+            color: #fff; /* Màu chữ (trắng) */
+            text-decoration: none; /* Loại bỏ gạch chân cho đường dẫn */
+            border-radius: 5px; /* Góc bo tròn */
+            text-align: center; /* Canh giữa văn bản */
+        }
+
+        .download-button:hover {
+            /* Hiệu ứng khi di chuột qua nút tải xuống */
+            background-color: #0056b3; /* Màu nền khi hover (#0056b3) */
+        }
+
+        .control-button {
+            /* Giao diện cho các nút điều khiển thiết bị */
+            display: block;
+            margin-top: 10px; /* Khoảng cách từ nút xuống phần dưới */
+            padding: 10px 20px;
+            background-color: #007bff; /* Màu nền (#007bff) */
+            color: #fff; /* Màu chữ (trắng) */
+            text-decoration: none; /* Loại bỏ gạch chân cho đường dẫn */
+            border-radius: 5px; /* Góc bo tròn */
+            text-align: center; /* Canh giữa văn bản */
+            cursor: pointer; /* Biểu tượng con trỏ khi di chuột qua nút */
+        }
+
+        .control-button:hover {
+            /* Hiệu ứng khi di chuột qua các nút điều khiển */
+            background-color: #0056b3; /* Màu nền khi hover (#0056b3) */
+        }
+        #login-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+<div class="container-wrapper">
+    <div class="container">
+        <h1>Data Information From Sensor</h1>
+        <!-- Hiển thị thông tin từ cảm biến -->
+        <p>Device ID: {{.LatestSensorData.DeviceID}}</p>
+        <p>Light Intensity: {{.LatestSensorData.LightIntensity}}</p>
+        <p>Temperature: {{.LatestSensorData.Temperature}}</p>
+        <p>Air Humidity: {{.LatestSensorData.AirHumidity}}</p>
+        <p>Soil Humidity: {{.LatestSensorData.SoilHumidity}}</p>
+        <p>Prediction: {{.LatestSensorData.Prediction}}</p>
+        <p>Timestamp: {{.LatestSensorData.Timestamp}}</p>
+        <p>Note: {{.LatestSensorData.Note}}</p>
+
+        <a href="/download" class="download-button">Download Excel</a> <!-- Nút tải xuống tệp Excel -->
+    </div>
+
+    <div class="container">
+        <h2>User Control Information</h2>
+        <!-- Hiển thị thông tin điều khiển từ người dùng -->
+        <p>Device ID: {{- /*gotype: */ -}}
+            {{.LatestUserControlData.DeviceID}}</p>
+        <p>Command: {{.LatestUserControlData.Command}}</p>
+        <p>Timestamp: {{.LatestUserControlData.Timestamp}}</p>
+        <form method="POST" action="/add_user_control">
+            <!-- Biểu mẫu để điều khiển thiết bị -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                <button class="control-button" type="submit" name="device_id" value="pump" onclick="setCommand('on')">PUMP ON</button>
+                <button class="control-button" type="submit" name="device_id" value="fan" onclick="setCommand('on')">FAN ON</button>
+                <button class="control-button" type="submit" name="device_id" value="motor" onclick="setCommand('on')">MOTOR ON</button>
+                <button class="control-button" type="submit" name="device_id" value="pump" onclick="setCommand('off')">PUMP OFF</button>
+                <button class="control-button" type="submit" name="device_id" value="fan" onclick="setCommand('off')">FAN OFF</button>
+                <button class="control-button" type="submit" name="device_id" value="motor" onclick="setCommand('off')">MOTOR OFF</button>
+            </div>
+            <input type="hidden" id="command" name="command" value="on">
+        </form>
+    </div>
+
+    <div class="container">
+        <h2>Chart</h2>
+        <canvas id="sensorChart" width="400" height="200"></canvas>
+        <canvas id="sensorChartLine" width="400" height="200"></canvas>
+    </div>
+
+</div>
+<script>
+    // Đoạn mã JavaScript để thiết lập giá trị của trường "command"
+    function setCommand(value) {
+        document.getElementById('command').value = value;
+    }
+
+    // Get sensor data values from Go template
+    var lightIntensity = {{.LatestSensorData.LightIntensity}};
+    var temperature = {{.LatestSensorData.Temperature}};
+    var airHumidity = {{.LatestSensorData.AirHumidity}};
+    var soilHumidity = {{.LatestSensorData.SoilHumidity}};
+
+    // Create a bar chart using Chart.js
+    var ctx = document.getElementById('sensorChart').getContext('2d');
+    var sensorChartBar = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Light Intensity', 'Temperature', 'Air Humidity', 'Soil Humidity'],
+            datasets: [{
+                label: 'Sensor Data',
+                data: [lightIntensity, temperature, airHumidity, soilHumidity],
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(54, 162, 235, 0.5)',
+                    'rgba(255, 206, 86, 0.5)',
+                    'rgba(75, 192, 192, 0.5)'
+                ],
+                borderColor: [
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(75, 192, 192, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Create a line chart using Chart.js
+    var ctxLine = document.getElementById('sensorChartLine').getContext('2d');
+    var sensorChartLine = new Chart(ctxLine, {
+        type: 'line',
+        data: {
+            labels: ['Light Intensity', 'Temperature', 'Air Humidity', 'Soil Humidity'],
+            datasets: [
+                {
+                    label: 'Light Intensity',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    data: [lightIntensity],
+                    fill: false,
+                    pointRadius: 5, // Increase the point radius to make it visible
+                },
+                {
+                    label: 'Temperature',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    data: [temperature],
+                    fill: false,
+                    pointRadius: 5,
+                },
+                {
+                    label: 'Air Humidity',
+                    borderColor: 'rgba(255, 206, 86, 1)',
+                    data: [airHumidity],
+                    fill: false,
+                    pointRadius: 5,
+                },
+                {
+                    label: 'Soil Humidity',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    data: [soilHumidity],
+                    fill: false,
+                    pointRadius: 5,
+                },
+            ],
+        },
+        options: {
+            scales: {
+                x: {
+                    type: 'category', // Use category scale for labels
+                    position: 'bottom',
+                },
+                y: {
+                    beginAtZero: true,
+                },
+            },
+        },
+    });
+
+</script>
+</body>
+</html>
